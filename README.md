@@ -105,7 +105,7 @@ To reproduce the results of this tables
     
 n_labels = 5, 25\
 dataset-name =  CUB, miniImageNet, tieredImagenet, FC-100\ 
-criterion = random, oracle, margin, K-medoid, LSS
+\criterion = random, oracle, margin, K-medoid, LSS
     
 
 
