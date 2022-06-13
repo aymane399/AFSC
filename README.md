@@ -81,7 +81,7 @@ To reproduce the results of these tables (last two lines) run:
 
     $ python main.py --dataset <dataset-name> --model resnet18 --n_labels <number-of-labels>
     
-dataset-name =  CUB, miniImageNet, tieredImagenet
+dataset-name =  CUB, miniImageNet, tieredImagenet\
 n_labels = 5, 25, 50, 100
 
 
@@ -103,8 +103,8 @@ To reproduce the results of this tables
 
     $ python main.py --dataset <dataset-name> --model resnet12 --n_labels <number-of-labels> --crit <criterion>
     
-dataset-name =  CUB, miniImageNet, tieredImagenet, FC-100 
-n_labels = 5, 25
+dataset-name =  CUB, miniImageNet, tieredImagenet, FC-100\ 
+n_labels = 5, 25\
 criterion = random, oracle, margin, K-medoid, LSS
     
 
