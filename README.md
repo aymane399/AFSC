@@ -101,10 +101,10 @@ n_labels = 5, 25, 50, 100
 
 To reproduce the results of this tables 
 
-    $ python main.py --dataset <dataset-name> --model resnet12 --n_labels <number-of-labels> --crit <criterion>
+    $ python main.py --n_labels <number-of-labels> --dataset <dataset-name> --model resnet12 --crit <criterion>
     
-dataset-name =  CUB, miniImageNet, tieredImagenet, FC-100\ 
 n_labels = 5, 25\
+dataset-name =  CUB, miniImageNet, tieredImagenet, FC-100\ 
 criterion = random, oracle, margin, K-medoid, LSS
     
 
