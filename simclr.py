@@ -458,7 +458,7 @@ if __name__ == "__main__":
     np.random.shuffle(fs_classes)
     fs_task_classes = fs_classes[:5].tolist()
     class_images =class_images_dict (fs_task_classes,dataset_path='.\\datasets\data\\tiered_imagenet\data\\')
-    ds_size = 5*200
+    ds_size = 5*10
     
     dataset = ContrastiveLearningDataset()
     train_dataset = dataset.get_dataset(name='tiered', n_views=2, ds_size=ds_size, class_images=class_images)
@@ -472,10 +472,7 @@ if __name__ == "__main__":
     model = load_resnet18_tiered()
     trf = without_augment()
 
-    for i in range(ds_size):
-        im = read_image(train_dataset.im_paths[i])    
-        im = trf(pil(im))
-        runs_x[i] = model(im.float().to('cuda').unsqueeze(0),True)[0]
+
 
 
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
@@ -486,12 +483,16 @@ if __name__ == "__main__":
     #  It’s a no-op if the 'gpu_index' argument is a negative integer or None.
     with torch.cuda.device(args.gpu_index):
         simclr = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args)
+        print(simclr.model == model)
         simclr.train(train_loader)
-
+        print(simclr.model == model)
 
     #few_shot_task
     dataset = load_dataset(["datasets/tiered18.pt"], 351, 'cuda')
 
+    for i in range(ds_size):
+        im = read_image(train_dataset.im_paths[i])    
+        im = trf(pil(im))
+        runs_x[i] = model(im.float().to('cuda').unsqueeze(0),True)[0]
     print(runs_x.shape)
-    features = simclr(runs_x)
-    print(features.shape)
+    print('fkn ready')
