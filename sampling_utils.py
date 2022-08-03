@@ -99,19 +99,41 @@ def select_with_criterion(runs_x, labels_idx, num_classes, centroids, soft_alloc
 
     n_runs = runs_x.shape[0]
     for r in range(n_runs):
-            for i in range(num_classes):
-                if crit=='K-medoid':
-                    probs = -torch.norm(runs_x[r]-centroids[r,i],dim=-1)
-                elif crit=='LSS':
-                    probs = (torch.norm(runs_x[r].unsqueeze(0).repeat(num_classes,1,1) - centroids[r].unsqueeze(1).repeat(1,runs_x.shape[1],1),dim=2)**2)
-                    probs/=probs.clone()[i,:]
-                    probs = probs.sum(dim=0)
-                elif crit=='margin':
-                    probs = soft_allocations[r,:,i] - torch.argmax(soft_allocations[r,:,np.delete(np.arange(num_classes),i)],dim=-1)
-                probs=ns*probs
-                probs[clust_labels[r]!=i] = -10e6
-                probs[labels_idx[r,:rd*num_classes+i].type(torch.long)] = np.NINF
-                labels_idx[r,rd*num_classes+i] = torch.argmax(probs)
+            if False:
+                
+                    if crit == 'vr':
+                        probs = -torch.max(soft_allocations[r],dim=1)[0]
+                    elif crit =='entropy':
+                        probs = torch.sum(-torch.log(soft_allocations[r])*soft_allocations[r],dim=1)
+                    probs=ns*probs
+                    for step in range(5):
+                        probs[labels_idx[r,:rd*num_classes+step].type(torch.long)] = np.NINF
+                        labels_idx[r,rd*num_classes+step] = torch.argmax(probs)
+                        
+
+            else:
+                for i in range(num_classes):
+                    if crit=='K-medoid':
+                        probs = -torch.norm(runs_x[r]-centroids[r,i],dim=-1)
+                    elif crit=='LSS':
+                        probs = (torch.norm(runs_x[r].unsqueeze(0).repeat(num_classes,1,1) - centroids[r].unsqueeze(1).repeat(1,runs_x.shape[1],1),dim=2)**2)
+                        probs/=probs.clone()[i,:]
+                        probs = probs.sum(dim=0)
+                    elif crit=='margin':
+                        probs = soft_allocations[r,:,i] - torch.argmax(soft_allocations[r,:,np.delete(np.arange(num_classes),i)],dim=-1)
+                    elif crit == 'vr':
+                        probs = torch.max(soft_allocations[r],dim=1)[0]
+                    elif crit =='entropy':
+                        probs = -torch.sum(-torch.log(soft_allocations[r])*soft_allocations[r],dim=1)
+                    probs=ns*probs
+                    for step in range(5):
+                        probs[labels_idx[r,:rd*num_classes+step].type(torch.long)] = np.NINF
+                        labels_idx[r,rd*num_classes+step] = torch.argmax(probs)
+
+                    probs=ns*probs
+                    probs[clust_labels[r]!=i] = -10e6
+                    probs[labels_idx[r,:rd*num_classes+i].type(torch.long)] = np.NINF
+                    labels_idx[r,rd*num_classes+i] = torch.argmax(probs)
 
     return labels_idx
 
@@ -177,7 +199,7 @@ def softkm_sample(runs_x, runs_y, num_classes, num_labels, device, n_init=10, te
             if rd>=switch:
                 ns=-1
             clust_labels,soft_allocations,mask = softkmeans(runs_x, runs_y, labels_idx, num_classes, num_samples, num_classes*rd, temp, num_iter) 
-            if crit=='margin':
+            if crit in ['margin','vr','entropy']:
                 allocs = torch.ones(n_runs,num_samples,num_classes).to(device)
                 allocs[mask] = soft_allocations.reshape(-1,num_classes)
             else:
