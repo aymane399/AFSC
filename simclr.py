@@ -19,10 +19,11 @@ from torch.utils.tensorboard import SummaryWriter
 import torchvision.models as models
 from tqdm import tqdm
 from contrastive_ds import ContrastiveLearningDataset,class_images_dict
-from sklearn.neural_network import MLPClassifier
+from sklearn.neural_network import MLPClassifier as MLP
 from utils import *
 from sampling_utils import *
 
+torch.cuda.empty_cache()
 
 def load_dataset(dataset_filename, train_c, device):
 
@@ -130,7 +131,10 @@ parser.add_argument('--disable-cuda', action='store_true',
                     help='Disable CUDA')
 parser.add_argument('--fp16-precision', action='store_true',
                     help='Whether or not to use 16-bit precision GPU training.')
-
+parser.add_argument('--ds', type=int, default=100,
+                    help='Whether or not to use 16-bit precision GPU training.')
+parser.add_argument('--n_labels', type=int, default=25,
+                    help='Whether or not to use 16-bit precision GPU training.')
 parser.add_argument('--out_dim', default=128, type=int,
                     help='feature dimension (default: 128)')
 parser.add_argument('--log-every-n-steps', default=100, type=int,
@@ -142,6 +146,41 @@ parser.add_argument('--n-views', default=2, type=int, metavar='N',
 parser.add_argument('--gpu-index', default=0, type=int, help='Gpu index.')
 
 feature_dim = 512
+
+def wacc_acc_f1(runs_preds,runs_y,n_ways):
+
+    """
+    computes weighted accuracy, unweighted accuracy and weighted F1-score for predictions
+
+    Parameters
+    ----------
+    runs_x : runs inputs
+    runs_y : runs targets
+    n_ways : number of ways
+    
+
+    Returns
+    -------
+    mat_avg
+        average class means from label
+    optional ~ shots_per_class 
+        classes count in labels
+    """
+
+    acc = []
+    f1 = []
+    n_runs = runs_preds.shape[0]
+    wacc = torch.zeros((n_runs,1))        
+    for i in range(n_runs):
+        acc.append(accuracy_score(runs_preds[i].cpu(),runs_y[i].cpu()))
+        f1.append(f1_score(runs_preds[i].cpu(),runs_y[i].cpu(),average='weighted'))        
+    
+    for i in range(n_ways):
+        class_pred = (runs_preds==i).float().cpu()
+        class_true = (runs_y==i).float().cpu()
+        wacc += torch.nan_to_num(((class_true*class_pred).sum(axis=1))/class_true.sum(axis=1),nan=1).reshape(-1,1)/n_ways
+    wacc = wacc.reshape(-1).tolist()
+    return wacc,acc,f1  
 
 
 def conv3x3(in_planes, out_planes, stride=1):
@@ -418,7 +457,7 @@ class SimCLR(object):
                 n_iter += 1
 
             # warmup for the first 10 epochs
-            if epoch_counter >= 10:
+            if epoch_counter >= 5:
                 self.scheduler.step()
             logging.debug(f"Epoch: {epoch_counter}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
             print('Epoch : '+str(epoch_counter)+' \nLoss : '+str(loss)+' \nTop acc : '+str(top1[0]))
@@ -452,47 +491,64 @@ def without_augment(size=84, enlarge=True):
             ])
 
 if __name__ == "__main__":
-    args = parser.parse_args()
-    fs_classes = np.arange(160)
-    np.random.shuffle(fs_classes)
-    np.random.shuffle(fs_classes)
-    fs_task_classes = fs_classes[:5].tolist()
-    class_images =class_images_dict (fs_task_classes,dataset_path='.\\datasets\data\\tiered_imagenet\data\\')
-    ds_size = 5*10
-    
-    dataset = ContrastiveLearningDataset()
-    train_dataset = dataset.get_dataset(name='tiered', n_views=2, ds_size=ds_size, class_images=class_images)
+    accs = []
+    for i in range(10):
+        args = parser.parse_args()
+        fs_classes = np.arange(160)
+        np.random.shuffle(fs_classes)
+        np.random.shuffle(fs_classes)
+        fs_task_classes = fs_classes[:5].tolist()
+        class_images =class_images_dict (fs_task_classes,dataset_path='.\\datasets\data\\tiered_imagenet\data\\')
+        ds_size = args.ds
+        
+        dataset = ContrastiveLearningDataset()
+        train_dataset = dataset.get_dataset(name='tiered', n_views=2, ds_size=ds_size, class_images=class_images)
 
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=32, shuffle=True,
-        num_workers=12, pin_memory=True, drop_last=True)
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=32, shuffle=True,
+            num_workers=12, pin_memory=True, drop_last=True)
 
-    runs_x = torch.zeros(ds_size,512)
-    runs_y = torch.tensor(train_dataset.targets)
-    model = load_resnet18_tiered()
-    trf = without_augment()
+        runs_x = torch.zeros(ds_size,3,84,84)
+        runs_xx = torch.zeros(ds_size,512)
+        runs_y = torch.tensor(train_dataset.targets)
+        model = load_resnet18_tiered()
+        trf = without_augment()
 
 
 
 
-    optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
+        optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader), eta_min=0,
-                                                           last_epoch=-1)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader), eta_min=0,
+                                                            last_epoch=-1)
 
-    #  It’s a no-op if the 'gpu_index' argument is a negative integer or None.
-    with torch.cuda.device(args.gpu_index):
-        simclr = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args)
-        print(simclr.model == model)
-        simclr.train(train_loader)
-        print(simclr.model == model)
+        #  It’s a no-op if the 'gpu_index' argument is a negative integer or None.
+        with torch.cuda.device(args.gpu_index):
+            simclr = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args)
+            simclr.train(train_loader)
 
-    #few_shot_task
-    dataset = load_dataset(["datasets/tiered18.pt"], 351, 'cuda')
+        #few_shot_task
+        with torch.no_grad():
+            model.eval()
+            torch.cuda.empty_cache()
+            for i in tqdm(range(ds_size)):
+                im = read_image(train_dataset.im_paths[i])    
+                runs_x[i]  = trf(pil(im)).float()
+            for i in range(args.ds//64):
 
-    for i in range(ds_size):
-        im = read_image(train_dataset.im_paths[i])    
-        im = trf(pil(im))
-        runs_x[i] = model(im.float().to('cuda').unsqueeze(0),True)[0]
-    print(runs_x.shape)
-    print('fkn ready')
+                runs_xx[i*64:(i+1)*64] = model(runs_x[i*64:(i+1)*64],True)[0]
+            runs_xx[(i+1)*64:] = model(runs_x[(i+1)*64:],True)[0]
+        
+        labels_idces = torch.randperm(args.ds)[:args.n_labels]
+
+        labels_x = runs_xx[labels_idces]
+        labels_y = runs_y[labels_idces]
+
+        mlp = MLP(64)
+        mlp.fit(labels_x,labels_y.reshape(-1))
+        y_pred = torch.tensor(mlp.predict(runs_xx)).unsqueeze(0)
+        print('result is')
+        acc = wacc_acc_f1(y_pred,runs_y.unsqueeze(0),5)[0]
+        print(acc)
+        accs.append(acc[0])
+    print("best: {:.2f}% (± {:.2f}%)".format(stats(accs, "")[0]*100,stats(accs, "")[1]*100))

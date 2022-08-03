@@ -92,3 +92,50 @@ def softkmeans(runs_x,runs_y,labels_idx,n_ways,n_samples,n_labels,temp=5, n_iter
     pred_labels[np.arange(n_runs).reshape(-1,1),labels_idx]= runs_y[np.arange(n_runs).reshape(-1,1),labels_idx].type(torch.long)
 
     return pred_labels,soft_allocations,mask
+
+
+def ptmap(runs_x,runs_y,labels_idx,n_ways,n_samples,n_labels,temp=1, n_iter=20, n_iter_sinkhorn=100, alpha_ptmap=0.85):
+
+    runs_y_clone = runs_y.clone().detach().type(torch.long)
+    n_runs = runs_x.shape[0]
+
+    labels_x = runs_x[np.arange(n_runs).reshape(-1,1),labels_idx].permute(0,2,1)
+    labels_y = runs_y[np.arange(n_runs).reshape(-1,1),labels_idx]
+
+    oh_labels_avg, oh_labels, labels_class_count =  sampling_utils.label_oh_mat(labels_y, n_ways, avg=False)
+    centroids = torch.matmul(labels_x,oh_labels_avg).permute(0,2,1)
+    cents_non_avg = torch.matmul(labels_x,oh_labels).permute(0,2,1)
+    
+
+    #using a mask on the labels in order to not account for them in the soft k-means iterations as we force
+    #them to stay withing the cluster they initialize
+    mask = torch.arange(n_samples).reshape(1,-1).repeat(n_runs,1)
+    for i in range(n_labels):
+        mask[np.arange(n_runs).reshape(-1,1),labels_idx[:,i].reshape(n_runs,1)]= -1
+    mask = (mask!=-1)
+    runs_x = runs_x[mask].reshape(n_runs,n_samples-n_labels,-1)
+
+    for i in range(n_iter):
+
+        distances = torch.norm(runs_x.unsqueeze(2) - centroids.unsqueeze(1),dim=-1)
+
+        soft_allocations = torch.exp( -temp * distances)
+        #print(soft_allocations[:5,:5])
+        for _ in range(n_iter_sinkhorn):
+            soft_allocations = soft_allocations / soft_allocations.sum(dim = 2, keepdim = True) * n_ways
+            soft_allocations = soft_allocations / soft_allocations.sum(dim = 1, keepdim = True) * n_samples
+        #print(soft_allocations[:5,:5])
+        new_centroids = cents_non_avg + torch.einsum("rsw,rsd->rwd", soft_allocations, runs_x)
+        new_centroids = centroids/((labels_class_count+soft_allocations.sum(dim = 1)).unsqueeze(-1))
+        centroids = centroids * alpha_ptmap + (1 - alpha_ptmap) * new_centroids
+        centroids = centroids 
+    
+    distances = torch.norm(runs_x.unsqueeze(2) - centroids.unsqueeze(1),dim=-1)
+    preds_non_labels = torch.min(distances, dim = 2)[1]
+    runs_y_clone[mask] = preds_non_labels.reshape(-1)
+
+    pred_labels = runs_y_clone.reshape(runs_y_clone.shape)
+    pred_labels[np.arange(n_runs).reshape(-1,1),labels_idx]= runs_y[np.arange(n_runs).reshape(-1,1),labels_idx].type(torch.long)
+    return pred_labels,soft_allocations,mask
+
+

@@ -53,6 +53,8 @@ parser.add_argument("--run_batch_size", type=int, default=100, help="batch size 
 parser.add_argument("--comb_batch_size", type=int, default=100, help="combination batching for oracle criterion")
 parser.add_argument("--switch", type=int, default=1, help="round number where we switch from high to low confidence sampling")
 parser.add_argument("--crit", type=str, default='LSS', help="active sampling criterion (LSS, K-medoid, margin, random or orcale)")
+parser.add_argument("--inference", type=str, default='softkmeans', help="few-shot predictions model, default=softkmeans")
+
 
 parser.add_argument("--gs", type=bool, default=True, help="apply graph smoothing when generating runs")
 parser.add_argument("--beta", type=int, default='2', help="graph smoothing hyperparameter")
