@@ -114,26 +114,27 @@ def select_with_criterion(runs_x, labels_idx, num_classes, centroids, soft_alloc
             else:
                 for i in range(num_classes):
                     if crit=='K-medoid':
-                        probs = -torch.norm(runs_x[r]-centroids[r,i],dim=-1)
+                        probs = torch.norm(runs_x[r]-centroids[r,i],dim=-1)
                     elif crit=='LSS':
-                        probs = (torch.norm(runs_x[r].unsqueeze(0).repeat(num_classes,1,1) - centroids[r].unsqueeze(1).repeat(1,runs_x.shape[1],1),dim=2)**2)
+                        probs = -(torch.norm(runs_x[r].unsqueeze(0).repeat(num_classes,1,1) - centroids[r].unsqueeze(1).repeat(1,runs_x.shape[1],1),dim=2)**2)
                         probs/=probs.clone()[i,:]
                         probs = probs.sum(dim=0)
                     elif crit=='margin':
                         probs = soft_allocations[r,:,i] - torch.argmax(soft_allocations[r,:,np.delete(np.arange(num_classes),i)],dim=-1)
-                    elif crit == 'vr':
-                        probs = torch.max(soft_allocations[r],dim=1)[0]
-                    elif crit =='entropy':
-                        probs = -torch.sum(-torch.log(soft_allocations[r])*soft_allocations[r],dim=1)
-                    probs=ns*probs
-                    for step in range(5):
-                        probs[labels_idx[r,:rd*num_classes+step].type(torch.long)] = np.NINF
-                        labels_idx[r,rd*num_classes+step] = torch.argmax(probs)
-
-                    probs=ns*probs
-                    probs[clust_labels[r]!=i] = -10e6
-                    probs[labels_idx[r,:rd*num_classes+i].type(torch.long)] = np.NINF
-                    labels_idx[r,rd*num_classes+i] = torch.argmax(probs)
+                    if crit in ['vr','entropy']:
+                        if crit == 'vr':
+                            probs = torch.max(soft_allocations[r],dim=1)[0]
+                        elif crit =='entropy':
+                            probs = -torch.sum(-torch.log(soft_allocations[r])*soft_allocations[r],dim=1)
+                        probs=ns*probs
+                        for step in range(5):
+                            probs[labels_idx[r,:rd*num_classes+step].type(torch.long)] = np.NINF
+                            labels_idx[r,rd*num_classes+step] = torch.argmax(probs)
+                    else:
+                        probs=ns*probs
+                        probs[clust_labels[r]!=i] = -10e6
+                        probs[labels_idx[r,:rd*num_classes+i].type(torch.long)] = np.NINF
+                        labels_idx[r,rd*num_classes+i] = torch.argmax(probs)
 
     return labels_idx
 

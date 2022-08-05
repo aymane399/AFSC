@@ -152,9 +152,10 @@ def main(n_runs, n_ways, n_samples, n_labels, comb_batch_size, run_batch_size, d
                 elif crit =='entropy':
                     pred_ent = torch.sum(-torch.log(proto_probs)*proto_probs,dim=1)
                     if round>0:
-                        pred_ent[labels_idx[:round*n_ways]] = np.inf
+                        pred_ent = pred_ent
+                        pred_ent[labels_idx[:round*n_ways]] = np.NINF
 
-                        labels_idx[round*n_ways:(round+1)*n_ways] = torch.topk(-pred_ent, n_ways)[1]
+                        labels_idx[round*n_ways:(round+1)*n_ways] = torch.topk(pred_ent, n_ways)[1]
                     else:
                         labels_idx[:n_ways] = torch.randperm(n_samples)[:n_ways]
                 if crit =='random':
