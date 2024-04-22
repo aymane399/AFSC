@@ -126,10 +126,12 @@ def select_with_criterion(runs_x, labels_idx, num_classes, centroids, soft_alloc
                     elif crit =='entropy':
                         probs = -torch.sum(-torch.log(soft_allocations[r])*soft_allocations[r],dim=1)
                     probs=ns*probs
-                    for step in range(5):
-                        probs[labels_idx[r,:rd*num_classes+step].type(torch.long)] = np.NINF
-                        labels_idx[r,rd*num_classes+step] = torch.argmax(probs)
 
+                    if crit not in ['K-medoid','LSS','margin']:
+                        for step in range(5):
+                            probs[labels_idx[r,:rd*num_classes+step].type(torch.long)] = np.NINF
+                            labels_idx[r,rd*num_classes+step] = torch.argmax(probs)
+            
                     probs=ns*probs
                     probs[clust_labels[r]!=i] = -10e6
                     probs[labels_idx[r,:rd*num_classes+i].type(torch.long)] = np.NINF
